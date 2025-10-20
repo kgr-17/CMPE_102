@@ -10,6 +10,8 @@ counter: .long 0
 itoa_string: .ascii "          \n"
 sjsuprompt: .ascii "(sjsu) "
 instruction: .ascii "                "
+hexdigits:   .ascii "0123456789abcdef"
+hex_string:  .ascii "0x00000000\n"     # 2 + 8 + '\n' = 11 bytes
 ilen: .long 0
 alu: .long 0
 .text
@@ -38,7 +40,16 @@ main:
     je     do_sub
     cmpl   $0x206f7571,instruction      # cmpl "quo ",instruction in hex
     je     do_quo
+    cmpl   $0x206f7571,instruction      # cmpl "quo ",instruction in hex
+    je     do_quo
+    cmpl   $0x206d6572,instruction      # cmpl "rem ",instruction in hex
+    je     do_rem
+    cmpl   $0x206d7573,instruction     # "sum "
+    je     do_sum
+    cmpl   $0x0a6d7573,instruction     # "sum\n"
+    je     do_sum
     jmp    main
+
 do_mov:
     call   atoi				# calling atoi() to convert instruction+4 to binary
     mov    counter,%eax			# placing atoi result from counter to eax
@@ -50,6 +61,16 @@ do_mov:
     mov    $itoa_string,%ecx
     mov    $11,%edx
     int    $0x80
+
+
+    # print hex line
+    call   itox
+    mov    $4,%eax
+    mov    $1,%ebx
+    mov    $hex_string,%ecx
+    mov    $11,%edx              # "0x" + 8 + "\n"
+    int    $0x80
+
     jmp    main				# jumps back to label main for another instruction
 do_add:
     call   atoi
@@ -64,6 +85,16 @@ do_add:
     mov    $itoa_string,%ecx
     mov    $11,%edx
     int    $0x80
+
+
+        # print hex line
+    call   itox
+    mov    $4,%eax
+    mov    $1,%ebx
+    mov    $hex_string,%ecx
+    mov    $11,%edx              # "0x" + 8 + "\n"
+    int    $0x80
+
     jmp    main				# jumps back to label main for another instruction
 do_mul:
     call   atoi
@@ -78,6 +109,15 @@ do_mul:
     mov    $itoa_string,%ecx
     mov    $11,%edx
     int    $0x80
+
+        # print hex line
+    call   itox
+    mov    $4,%eax
+    mov    $1,%ebx
+    mov    $hex_string,%ecx
+    mov    $11,%edx              # "0x" + 8 + "\n"
+    int    $0x80
+
     jmp    main				# jumps back to label main for another instruction
 # exit here
     mov    $1,%eax
@@ -97,26 +137,117 @@ do_sub:
     mov    $itoa_string,%ecx
     mov    $11,%edx
     int    $0x80
+
+    # print hex line
+    call   itox
+    mov    $4,%eax
+    mov    $1,%ebx
+    mov    $hex_string,%ecx
+    mov    $11,%edx              # "0x" + 8 + "\n"
+    int    $0x80
+
     jmp    main                         # jumps back to label main for another instruction
 
 do_quo:
-    call   atoi
-    mov    counter,%eax
-    idivl  alu,%eax
-    mov    %eax,alu
-    mov    %eax,counter
+    call atoi                 # convert operand to binary -> stored in counter
+    mov counter,%ebx              # divisor in EBX
+    mov alu,%eax          # dividend in EAX
+    cdq                       # sign-extend EAX into EDX (for idiv)
+    idivl %ebx                # EAX = EAX / EBX; EDX = remainder
+    mov %eax,alu              # save quotient back to ALU
+    mov %eax,counter          # also store in counter for itoa()
+    call itoa
+    mov $4,%eax
+    mov $1,%ebx
+    mov $itoa_string,%ecx
+    mov $11,%edx
+    int $0x80
+
+
+    # print hex line
+    call   itox
+    mov    $4,%eax
+    mov    $1,%ebx
+    mov    $hex_string,%ecx
+    mov    $11,%edx              # "0x" + 8 + "\n"
+    int    $0x80
+
+    jmp main
+
+do_rem:
+    call atoi                 # convert operand to binary -> stored in counter
+    mov counter,%ebx              # divisor in EBX
+    mov alu,%eax          # dividend in EAX
+    cdq                       # sign-extend EAX into EDX (for idiv)
+    idivl %ebx                # EAX = EAX / EBX; EDX = remainder
+    mov %edx,alu              # save quotient back to ALU
+    mov %edx,counter          # also store in counter for itoa()
+    call itoa
+    mov $4,%eax
+    mov $1,%ebx
+    mov $itoa_string,%ecx
+    mov $11,%edx
+    int $0x80
+
+    # print hex line
+    call   itox
+    mov    $4,%eax
+    mov    $1,%ebx
+    mov    $hex_string,%ecx
+    mov    $11,%edx              # "0x" + 8 + "\n"
+    int    $0x80
+
+    jmp main
+
+
+do_sum:
+    mov alu,%eax
+    mov $0,%edx  #sum = 0
+
+    cmp $0,%eax
+    mov $1,%ecx
+    mov $-1,%ebx
+    jg sum_positive
+    jl sum_negative
+    jmp sum_done
+
+
+sum_positive:
+    add %ecx,%edx
+    add $1,%ecx
+    cmp %eax,%ecx
+    jle sum_positive
+    jmp sum_done
+
+sum_negative:
+    add %ebx,%edx
+    sub $1,%ebx
+    cmp %eax,%ebx
+    jge sum_negative
+    jmp sum_done
+
+sum_done:
+    mov    %edx,alu         # store sum into ALU
+    mov    %edx,counter     # store in counter for itoa
     call   itoa
-#   eax = write(1,itoa_string,11)
     mov    $4,%eax
     mov    $1,%ebx
     mov    $itoa_string,%ecx
     mov    $11,%edx
     int    $0x80
-    jmp    main				# jumps back to label main for another instruction
-# exit here
-    mov    $1,%eax
-    mov    $0,%ebx
+
+    # print hex line
+    call   itox
+    mov    $4,%eax
+    mov    $1,%ebx
+    mov    $hex_string,%ecx
+    mov    $11,%edx              # "0x" + 8 + "\n"
     int    $0x80
+
+    jmp    main
+    
+
+
 #   Function atoi() to convert an ascii string like "mov 125" in variable instruction into binary 125, in variable counter
 atoi:
     mov    ilen,%esi			# set esi to the length of instruction variable
@@ -136,22 +267,50 @@ atoi_loop:
     ret
 #   Function itoa() to convert integer variable counter's value to ASCII characters, placed in variable itoa_string.
 itoa:
-#   copy counter to %eax to prepare for division
-    mov    counter,%eax
-#   copy 10 spaces to itoa_string
-    movl   $0x20202020,itoa_string
-    movl   $0x20202020,itoa_string+4
-    movw   $0x2020,itoa_string+8
-#   point %edi index register to the last byte of itoa_string, think:
-#   char *itoa_string="    ";
-#   char *edi = &itoa_string[9];
-    lea    itoa_string+9,%edi
-itoa_loop:
-    mov    $0,%edx
-    idivl  ten
-    addl   $'0',%edx	# convert from binary 0 (or 1-9) to '0' (or '1'-'9')
-    movb   %dl,(%edi)	# think: *(edi) = '0'
-    dec    %edi		# think: edi--;
-    cmpl   $0,%eax
-    jg     itoa_loop
-    ret			# ret: returns/jumps to the instruction after CALL itoa
+    mov counter,%eax
+    movl $0x20202020,itoa_string
+    movl $0x20202020,itoa_string+4
+    movw $0x2020,itoa_string+8
+    lea itoa_string+9,%edi
+
+    mov $0,%ecx          # clear ECX for sign flag
+    test %eax,%eax
+    jns itoa_loop_start  # jump if non-negative
+    neg %eax             # make it positive
+    mov $1,%ecx          # sign flag = 1
+
+itoa_loop_start:
+    mov $0,%edx
+    idivl ten
+    addl $'0',%edx
+    movb %dl,(%edi)
+    dec %edi
+    test %eax,%eax
+    jnz itoa_loop_start
+
+    cmp $0,%ecx
+    je itoa_done
+    movb $'-',(%edi)
+    dec %edi
+
+itoa_done:
+    ret
+
+
+
+# itox(): write ALU as "0x????????\n" into hex_string
+itox:
+    mov    alu,%eax              # working copy
+    mov    $8,%ecx               # 8 hex digits
+    lea    hex_string+9,%edi     # point at last digit position
+
+.itox_loop:
+    mov    %eax,%edx
+    and    $0xF,%edx             # low nibble
+    movb   hexdigits(%edx),%dl   # map nibble -> hex char
+    movb   %dl,(%edi)            # store char
+    dec    %edi
+    shr    $4,%eax               # logical shift right, get next nibble
+    dec    %ecx
+    jnz    .itox_loop
+    ret
